@@ -60,7 +60,7 @@ void Host::InitVideo(){
 	// set libav video context
 	// for later stream
 
-	int numBytes;
+	int buffer_size;
 	uint8_t * buffer = NULL;
 	this->codec = avcodec_find_decoder(AV_CODEC_ID_H264);
 	if(!this->codec)
@@ -109,6 +109,7 @@ void Host::InitVideo(){
 	this->codec_context->width = 1280;
 	this->codec_context->height = 720;
 	this->codec_context->pix_fmt = AV_PIX_FMT_YUV420P;
+	this->codec_context->thread_count = 10;
 	// sws context to convert frame data to YUV420:
 	// {"width":1280,"height":720}
 	// AV_PIX_FMT_BGR24
@@ -120,20 +121,20 @@ void Host::InitVideo(){
 		this->codec_context->width,
 		this->codec_context->height,
 		AV_PIX_FMT_YUV420P,
-		SWS_BILINEAR,
+		SWS_FAST_BILINEAR,
 		NULL,
 		NULL,
 		NULL
 	);
 
-	numBytes = av_image_get_buffer_size(
+	buffer_size = av_image_get_buffer_size(
 		AV_PIX_FMT_YUV420P,
 		this->codec_context->width,
 		this->codec_context->height,
 		32
 	);
 
-	buffer = (uint8_t *) av_malloc(numBytes * sizeof(uint8_t));
+	buffer = (uint8_t *) av_malloc(buffer_size * sizeof(uint8_t));
 
 	this->pict = av_frame_alloc();
 
@@ -401,28 +402,24 @@ void Host::RegistCB(ChiakiRegistEvent *event){
 bool Host::VideoCB(uint8_t *buf, size_t buf_size){
 	// callback function to decode video buffer
 	// access chiaki session from Host object
+	AVFrame *frame = av_frame_alloc();
 	AVPacket packet;
 	av_init_packet(&packet);
 	packet.data = buf;
 	packet.size = buf_size;
-	int r;
+	int r = 0 ;
+
+	if(!frame){
+		CHIAKI_LOGE(this->log, "UpdateFrame Failed to alloc AVFrame");
+		return false;
+	}
 
 send_packet:
-	// TODO AVCodec internal buffer is full removing frames before pushing
 	r = avcodec_send_packet(this->codec_context, &packet);
 	if(r != 0) {
 		if(r == AVERROR(EAGAIN)){
 			CHIAKI_LOGE(this->log, "AVCodec internal buffer is full removing frames before pushing");
-			AVFrame *frame = av_frame_alloc();
-
-			if(!frame){
-				CHIAKI_LOGE(this->log, "Failed to alloc AVFrame");
-				return false;
-			}
-
 			r = avcodec_receive_frame(this->codec_context, frame);
-			// send decoded frame for sdl texture update
-			av_frame_free(&frame);
 			if(r != 0){
 				CHIAKI_LOGE(this->log, "Failed to pull frame");
 				return false;
@@ -436,39 +433,7 @@ send_packet:
 		}
 	}
 
-	// FramesAvailable
-	AVFrame *frame = av_frame_alloc();
-	AVFrame *next_frame = av_frame_alloc();
-	AVFrame *tmp_swp = frame;
-
-	if(!frame){
-		CHIAKI_LOGE(this->log, "UpdateFrame Failed to alloc AVFrame");
-		return -1;
-	}
-
-	int ret;
-	/*
-	ret = avcodec_receive_frame(this->codec_context, frame);
-
-	if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-	{
-		CHIAKI_LOGE(this->log, "Error while decoding: EAGAIN or AVERROR_EOF");
-		return ret;
-	}
-	else if (ret < 0)
-	{
-		CHIAKI_LOGE(this->log, "Error while decoding.");
-		return -1;
-	}
-	*/
-	// decode frame
-	do {
-		tmp_swp = frame;
-		frame = next_frame;
-		next_frame = tmp_swp;
-		ret = avcodec_receive_frame(this->codec_context, next_frame);
-	} while(ret == 0);
-
+	r = avcodec_receive_frame(this->codec_context, frame);
 	// adjust frame to pict
 	sws_scale(
 		this->sws_context,
@@ -481,7 +446,6 @@ send_packet:
 	);
 
 	av_frame_free(&frame);
-	av_frame_free(&next_frame);
 	return true;
 }
 
