@@ -8,10 +8,28 @@ ENV PATH="${PATH}:${DEVKITARM}/bin/:${DEVKITPPC}/bin/"
 ENV WORKDIR="/build"
 WORKDIR "${WORKDIR}"
 
-# Upgrade image
-RUN pacman --noconfirm -Syu
+RUN pacman-key --init
+# Install devkitpro
+# doc source :
+# https://devkitpro.org/wiki/devkitPro_pacman
 
-RUN pacman --noconfirm -S \
+# First import the key which is used to validate the packages
+RUN pacman-key --keyserver hkps.pool.sks-keyservers.net \
+  --recv-keys BC26F752D25B92CE272E0F44F7FD5492264BB9D0
+RUN pacman-key --keyserver hkps.pool.sks-keyservers.net \
+  --lsign BC26F752D25B92CE272E0F44F7FD5492264BB9D0
+
+# Add the devkitPro repositories
+ADD devkit_repo ./devkit_repo
+RUN cat ./devkit_repo >> /etc/pacman.conf
+
+# Install the keyring which adds more keys which may be used to verify the packages.
+RUN pacman --noconfirm -U https://downloads.devkitpro.org/devkitpro-keyring.pkg.tar.xz
+
+# Now resync the database and update installed packages.
+# And install requirements
+RUN pacman --noconfirm -Syu \
+  && pacman --noconfirm -S \
     llvm \
     clang \
     lld \
@@ -23,30 +41,7 @@ RUN pacman --noconfirm -S \
     git \
     cmake \
     libx11 \
-    vim
-
-RUN pacman-key --init
-# Install devkitpro
-# doc source :
-# https://devkitpro.org/wiki/devkitPro_pacman
-
-# First import the key which is used to validate the packages
-RUN pacman-key --recv-keys F7FD5492264BB9D0
-RUN pacman-key --lsign F7FD5492264BB9D0
-
-# Add the devkitPro repositories
-ADD devkit_repo ./devkit_repo
-RUN cat ./devkit_repo >> /etc/pacman.conf
-# Install the keyring which adds more keys which may be used to verify the packages.
-RUN pacman --noconfirm -U https://downloads.devkitpro.org/devkitpro-keyring-r1.787e015-2-any.pkg.tar.xz
-# Now resync the database and update installed packages.
-RUN pacman -Sy
-
-RUN pacman --noconfirm -Syu
-
-#RUN pacman --noconfirm -S $(pacman -Slq dkp-libs)
-
-RUN pacman --noconfirm -S \
+    vim \
     protobuf \
     python-protobuf \
     sfml \
@@ -65,14 +60,13 @@ RUN pacman --noconfirm -S \
     switch-sdl2_gfx \
     switch-sdl2_ttf \
     switch-sdl2_image \
-	switch-sdl2_mixer \
+    switch-sdl2_mixer \
     switch-libexpat \
     switch-bzip2 \
     switch-libopus \
     switch-ffmpeg \
-	switch-mbedtls
-
-# RUN pip3 install -U pip
+    switch-mbedtls \
+  && pacman --noconfirm -Sc
 
 VOLUME ${WORKDIR}
 # nxlink server port
