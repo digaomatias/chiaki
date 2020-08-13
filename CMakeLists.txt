@@ -45,7 +45,7 @@ elseif(CHIAKI_ENABLE_SWITCH)
 	# load switch.cmake toolchain form ./cmake folder
 	# include(switch)
 	# to compile plutonium third party
-	set(CMAKE_CXX_STANDARD 17)
+	# set(CMAKE_CXX_STANDARD 17)
 	# TODO check if android ... or other versions are enabled
 	# force mbedtls as crypto lib
 	set(CHIAKI_LIB_ENABLE_MBEDTLS ON)
